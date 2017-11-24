@@ -1,0 +1,180 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>DATA COLLECTION(Devansh).md</title><script type="text/javascript">
+//<![CDATA[
+window.__cfRocketOptions = {byc:0,p:0,petok:"0c4ba0a0f5c22050d145dddd538327606adad850-1510922495-1800"};
+//]]>
+</script>
+<script type="text/javascript" src="https://ajax.cloudflare.com/cdn-cgi/scripts/0e574bed/cloudflare-static/rocket.min.js"></script>
+<style></style></head><body id="preview">
+<h1><a id="DATA_Collection_0"></a>DATA Collection</h1>
+<p>In this file of DATA Collection is described using the components:<br>
+1)RTC-1<br>
+2)SD CARD Module-1<br>
+3)ultrasonics-3 (Brake,Acclerator,Clutch)<br>
+4)Rotatory Encoders-1<br>
+5)Arduino Mega-1<br>
+6)Arduino UNO-1<br>
+7)IR Sensor-1<br>
+All these sensors are interfaced to Arduino Mega.<br>
+Their is serial communication between Arduino mega and uno by using pin 20 &amp; pin21.</p>
+<h2><a id="Circuit_Diagram_11"></a>Circuit Diagram</h2>
+<p><img src="https://i.imgur.com/axPnTLS.jpg" alt="Imgur"></p>
+<h3><a id="Description_13"></a>Description</h3>
+<p>This is circuit in which 3 ultrasonics are interfaced to Mega,along with RTC,SD CARD and IR sensor.The 3 ultrasonics are connected to respective brake,Acc. and clutch.<br>
+Whenver we apply  brakes -ultrasonics sensors(Trigg-7,Echo-6), it measures the changes and give it to the MEGA,same thing happen with clutch-ultrasonics sensors(Trigg-5,Echo-4) and acclerator-ultrasonics sensors(Trigg-9,Echo-8).<br>
+Encoders are interfaced with Uno(Pin13,Pin12),when steering rotates, on the basis of it, encoders syn the value with it,further these value is  serial communicated with Mega with pin20,and pin 21.<br>
+IR sensors is interfaced to MEGA (pin19-OUT) and its gives the speed feedback to Mega.<br>
+RTC is used to get the real time,it is connected to MEGA(13-SCL,12-SDA)t and also time is syn with Camera.<br>
+All the data which is apperaing in serial monitor is stored in SD card Module,which is further connected to mega(Pin53)<br>
+The code is described below:</p>
+<p>CODES</p>
+<pre><code>// MEGA - MASTER
+/* 1 temp     Done
+   3 ultra    Done
+   1 encoder  Done
+   1 sd card  Done
+   1 rtc      Done
+
+  //SDA = Analog Pin 4
+  //SCL = Analog Pin 5
+*/
+#include &lt;SD.h&gt;         //SD Card Library
+#include &lt;Wire.h&gt;       //I2C Library
+#include &lt;Ultrasonic.h&gt;
+#include &lt;OneWire.h&gt;
+#include&lt;DS3231.h&gt;
+//#include &lt;DallasTemperature.h&gt;
+//#include &quot;Sodaq_DS3231.h&quot;
+DS3231  rtc(12, 13);
+#define Rx 10
+#define Tx 11
+
+Ultra accelerator(8, 9);
+Ultra clutch(5, 4);
+Ultra breaking(6, 7);
+/*************** Encoder **********/
+//const int pinA = 43;
+//const int pinB = 39;
+
+int previous_state, state;
+int counter = 0;
+
+/*********** Temperature ***********/
+//#define ONE_WIRE_BUS 9
+//OneWire oneWire(ONE_WIRE_BUS);
+//DallasTemperature sensors(&amp;oneWire);
+/***********************************/
+
+
+/*********** RTC *******************/
+char weekDay[][4] = {&quot;Sun&quot;, &quot;Mon&quot;, &quot;Tue&quot;, &quot;Wed&quot;, &quot;Thu&quot;, &quot;Fri&quot;, &quot;Sat&quot; };
+uint32_t old_ts;
+String Date = &quot;&quot;;
+String Timer = &quot;&quot;;
+/***********************************/
+
+
+/*********** SD card ***********/
+//MOSI = Pin 11
+//MISO = Pin 12
+//SCLK = PIN 13
+int CS_pin = 53;
+/***********************************/
+int count = 0;
+int angle = 0;
+long int bag;
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println(&quot;START&quot;);
+  Wire.begin(5);
+  rtc.begin();
+  pinMode(12, INPUT_PULLUP);
+  pinMode(13, INPUT_PULLUP);
+  //  pinMode(pinA, INPUT_PULLUP);
+  //  pinMode(pinB, INPUT_PULLUP);
+
+
+  //Initialize Card
+  if (!SD.begin(CS_pin))
+  {
+    Serial.println(&quot;Card Failure&quot;);
+    return;
+  }
+  Serial.println(&quot;Card Ready&quot;);
+
+
+  //Write Log File Header
+  File logFile = SD.open(&quot;LOG.csv&quot;, FILE_WRITE);
+  if (logFile)
+  {
+    logFile.println(&quot;, , , ,&quot;); //Just a leading blank line, incase there was previous data
+    String header = &quot;Sr. No., Clutch, Break, Accelerator, Steering Angle, Timestamp&quot;;
+    logFile.println(header);
+    logFile.close();
+    Serial.println(header);
+  }
+  else
+  {
+    Serial.println(&quot;Couldn't open log file&quot;);
+  }
+
+  //    previous_state = digitalRead(pinA);
+}
+
+
+void loop()
+{
+  // Serial number
+  count++;
+
+  // Date and Time
+  String Timer = RTC1();
+
+  //Check Temperature
+  //      int temp = Readtemp();
+
+  //Read Distances
+  float acceleratorVal = accelerator.read();
+  float breakVal = breaking.read();
+  float clutchVal = clutch.read();
+  //  constraints for truck clutch(
+  clutchVal = constrain(clutchVal, 5.0, 14.0); // Clutch
+  breakVal = constrain(breakVal, 7.0, 15.0);  // Brake1
+  acceleratorVal = constrain(acceleratorVal, 6.0, 11.0); // Accelerator
+
+
+  // Steering
+  //    encoder();
+  Wire.onReceive(steer);
+  bag = map(bag, 0, 255, -580, 580);
+  bag = constrain(bag, -580, 580);
+//    Serial.println(bag);
+
+  //Create Data string for storing to SD card
+  //We will use CSV Format
+  String dataString = String(count) + &quot;, &quot; + String(Date) + &quot;, &quot; + String(Timer) + &quot;, &quot; +/* String(temp) + &quot;, &quot; +*/ String(acceleratorVal) + &quot;, &quot; + String(breakVal) + &quot;, &quot; + String(clutchVal) + &quot;, &quot; + String(bag);
+  //  String dataString = String(count) + &quot;, &quot; + String(clutchVal) + &quot;, &quot; + String(breakVal) + &quot;, &quot; + String(acceleratorVal) + &quot;, &quot; + String(bag)/*+ &quot;, &quot; + String(Time)*/;
+
+  //Open a file to write to
+  //Only one file can be open at a time
+  File logFile = SD.open(&quot;LOG.csv&quot;, FILE_WRITE);
+  if (logFile)
+  {
+    logFile.println(dataString);
+    logFile.close();
+    Serial.println(dataString);
+  }
+  else
+  {
+    Serial.println(&quot;Couldn't open log file&quot;);
+  }
+  Serial.flush();
+  delay(10);
+}
+~~~
+
+
+</code></pre>
+
+</body></html>
